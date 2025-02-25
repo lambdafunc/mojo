@@ -1,6 +1,6 @@
-# Simplifying Mojo🔥 - let's get rid of `let`!
+# Simplifying Mojo🔥 - let's get rid of `let`
 
-Chris Lattner, Dec 5, 2023, Status: **Accepted**, [discussion thread](https://github.com/modularml/mojo/discussions/1456#discussioncomment-8358722)
+Chris Lattner, Dec 5, 2023, Status: **Accepted**, [discussion thread](https://github.com/modular/mojo/discussions/1456#discussioncomment-8358722)
 
 Mojo is still a new language, and is rapidly evolving.  We’re learning a lot
 from other languages, but Mojo poses its own set of tradeoffs that indicate a
@@ -10,7 +10,7 @@ One of the early decisions made in Mojo's development is that it adopts the
 `let` and `var` design point that Swift uses.  This whitepaper argues that we
 should switch to a simpler model by jettisoning `let` and just retaining `var`
 (and implicit Python-style variable declarations in `def`).  This has also been
-[suggested by the community](https://github.com/modularml/mojo/issues/1205).
+[suggested by the community](https://github.com/modular/mojo/issues/1205).
 
 Note that immutability and value semantics remain an important part of the Mojo
 design, this is just about removing "named immutable variables".  Immutable
@@ -31,19 +31,19 @@ variables aren't a core programming concept, and not something required
 to achieve Mojo's goals.
 
 2. The naming of `let` caused a lot of early [heat and
-debate](https://github.com/modularml/mojo/discussions/120). Other programming
+debate](https://github.com/modular/mojo/discussions/120). Other programming
 languages have a wide range of design points (e.g. `const` in C/C++ and
 Javascript) and there is a divergence of naming for all these things:
 `let`, `val`, `const`, etc, etc.
 
 3. Mojo also has a notion of compile time value (`alias`), which means there are
 three concepts going around: `alias`, `let`, and `var`.  Most of the uses of
-(e.g.) Javascript `const`` is better served with `alias` than `let`.
+(e.g.) Javascript `const` is better served with `alias` than `let`.
 
 4. Both Swift and Rust encourage immutable values - Swift (and currently Mojo)
 warn about unneeded mutability, Rust makes mutability more verbose (`let mut`),
 and some propose that Mojo [make mutability more
-verbose](https://github.com/modularml/mojo/issues/451).  This cuts very hard
+verbose](https://github.com/modular/mojo/issues/451).  This cuts very hard
 against a lot of the design center of Python, which doesn’t even have this
 concept at all: it would be weird to make it the default, but if we don’t,
 then why bother having it?
@@ -64,16 +64,16 @@ is inconsistent.  Swift has a very complex set of rules for how struct fields
 get initialized that would be nice to not implement for Mojo.  There also isn’t
 a great way to define defaulted field values, e.g.:
 
-```mojo
-struct Thing:
-    # This is not actually supported right now, but imagine it were.
-    let field = 42
-    fn __init__(inout self):
-        self.field = 17  # shouldn't be able to overwrite field?
-```
+   ```mojo
+   struct Thing:
+       # This is not actually supported right now, but imagine it were.
+       let field = 42
+       fn __init__(out self):
+           self.field = 17  # shouldn't be able to overwrite field?
+   ```
 
 8. Mojo has a notion of ownership and will eventually have a notion of lifetimes
-and safe references (including both mutable and immutable _references_) which
+and safe references (including both mutable and immutable *references*) which
 will be different from (but can compose with) the `let` vs `var` distinction.
 It is unfortunate to have different forms of immutability floating around, and
 we really do need immutable borrows and immutable references.
@@ -112,7 +112,7 @@ This would eliminate a bunch of complexity in the compiler as well:
    like: “`let x: Int; x = 1; use(x); x = 2; use(x)`” even though the original
    lifetime of the first “`x=1`” naturally ended and “`x`” is uninitialized
    before being assigned to.  This has always been a design smell, and it
-   [doesn’t work right](https://github.com/modularml/mojo/issues/1414).
+   [doesn’t work right](https://github.com/modular/mojo/issues/1414).
 
 This proposal will not affect runtime performance at all as far as we know.
 

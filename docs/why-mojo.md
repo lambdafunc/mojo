@@ -2,11 +2,6 @@
 title: Why Mojo🔥
 sidebar_label: Why Mojo
 description: A backstory and rationale for why we created the Mojo language.
-website:
-  open-graph:
-    image: /static/images/mojo-social-card.png
-  twitter-card:
-    image: /static/images/mojo-social-card.png
 ---
 
 When we started Modular, we had no intention of building a new programming
@@ -64,7 +59,7 @@ systems-level code for AI workloads.
 ## A member of the Python family
 
 Our core mission for Mojo includes innovations in compiler internals and
-support for current and emerging accelerators, but don't see any need to
+support for current and emerging accelerators, but we don't see any need to
 innovate in language _syntax_ or _community_. So we chose to embrace the Python
 ecosystem because it is so widely used, it is loved by the AI ecosystem, and
 because we believe it is a really nice language.
@@ -85,8 +80,8 @@ features. We also benefit from tremendous lessons learned from other languages
 migrating developers to new compilers and languages, and we leverage the
 existing MLIR compiler ecosystem.
 
-Further, we decided that the right _long-term goal_ for Mojo is to provide a
-**superset of Python** (that is, to make Mojo compatible with existing Python
+Further, we decided that the right _long-term goal_ for Mojo is to adopt the
+**syntax of Python** (that is, to make Mojo compatible with existing Python
 programs) and to embrace the CPython implementation for long-tail ecosystem
 support. If you're a Python programmer, we hope that Mojo is immediately
 familiar, while also providing new tools to develop safe and performant
@@ -202,8 +197,8 @@ interpreter in Mojo instead of C? 🔥
 
 ## Python's problems
 
-By aiming to make Mojo a superset of Python, we believe we can solve many of
-Python's existing problems.
+By aiming to make Mojo the best way to extend Python, we believe we can solve
+many of Python's existing problems.
 
 Python has some well-known problems—most obviously, poor low-level performance
 and CPython implementation details like the global interpreter lock (GIL),
@@ -211,7 +206,7 @@ which makes Python single-threaded. While there are many active projects
 underway to improve these challenges, the issues brought by Python go deeper
 and are particularly impactful in the AI field. Instead of talking about those
 technical limitations in detail, we'll talk about their implications here in
-2023.
+the present.
 
 Note that everywhere we refer to Python in this section is referring to the
 CPython implementation. We'll talk about other implementations later.
@@ -238,7 +233,7 @@ significant challenges in this regard.
 Beyond the fundamental nature of how the two-world problem creates system
 complexity, it makes everything else in the ecosystem more complicated.
 Debuggers generally can't step across Python and C code, and those that can
-aren't widely accepted. It's painful that the Python package ecosystems has to
+aren't widely accepted. It's painful that the Python package ecosystem has to
 deal with C/C++ code in addition to Python. Projects like PyTorch, with
 significant C++ investments, are intentionally trying to move more of their
 codebase to Python because they know it gains usability.
@@ -288,9 +283,14 @@ This work is fantastic because it incrementally improves the current CPython
 implementation. For example, Python 3.11 has increased performance 10-60% over
 Python 3.10 through internal improvements, and [Python
 3.12](https://github.com/faster-cpython/ideas/wiki/Python-3.12-Goals) aims to
-go further with a trace optimizer. Many other projects are attempting to tame
-the GIL, and projects like PyPy (among many others) have used JIT compilation
-and tracing approaches to speed up Python.
+go further with a trace optimizer. [Python
+3.13](https://github.com/faster-cpython/ideas/blob/main/3.13/README.md) adds a
+[JIT compiler](https://peps.python.org/pep-0744/) to CPython, enables the use
+of [multiple subinterpreters](https://peps.python.org/pep-0554/) in a single
+Python process (thus sidestepping the GIL) and speeds up memory management.
+Many other projects are attempting to tame the GIL, and projects like PyPy
+(among many others) have used JIT compilation and tracing approaches to speed
+up Python.
 
 While we are fans of these great efforts, and feel they are valuable and
 exciting to the community, they unfortunately do not satisfy our needs at
@@ -327,17 +327,17 @@ use-cases of Python, they cannot solve the "two world problem." This approach
 drives fragmentation, and incompatibility makes _migration_ difficult to
 impossible—recall how challenging it was to migrate from Python 2 to Python 3.
 
-### Python supersets with C compatibility
+### Python family languages with C compatibility
 
-Because Mojo is designed to be a superset of Python with improved systems
-programming capabilities, it shares some high-level ideas with other Python
-supersets like [Pyrex](https://wiki.python.org/moin/Pyrex) and
-[Cython](https://cython.org/). Like Mojo, these projects define their own
-language that also support the Python language. They allow you to write more
+Because Mojo is designed to adopt the syntax of Python with improved systems
+programming capabilities, it shares some high-level ideas with other members of
+the Python family of languages like [Pyrex](https://wiki.python.org/moin/Pyrex)
+and [Cython](https://cython.org/). Like Mojo, these projects define their own
+language while also supporting the Python language. They allow you to write more
 performant extensions for Python that interoperate with both Python and C
 libraries.
 
-These Python supersets are great for some kinds of applications, and they've
+These Python family languages are great for some kinds of applications, and they've
 been applied to great effect by some popular Python libraries. However, they
 don't solve [Python's two-world problem](#the-two-world-problem) and because
 they rely on CPython for their core semantics, they can't work without it,
@@ -349,8 +349,8 @@ wide range of hardware.
 
 ### Embedded DSLs in Python
 
-Another common approach is to build an embedded domain-specific languages
-(DSLs) in Python, typically installed with a Python decorator. There are many
+Another common approach is to build embedded domain-specific languages (DSLs)
+in Python, typically installed with a Python decorator. There are many
 examples of this (the `@tf.function` decorator in TensorFlow, the
 `@triton.jit` in OpenAI's Triton programming model, etc.). A major benefit of
 these systems is that they maintain compatibility with the Python

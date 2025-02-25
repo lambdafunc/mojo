@@ -2,12 +2,6 @@
 title: "Mojo Manual"
 sidebar_label: Introduction
 description: A comprehensive guide to the Mojo programming language.
-css: /static/styles/page-navigation.css
-website:
-  open-graph:
-    image: /static/images/mojo-social-card.png
-  twitter-card:
-    image: /static/images/mojo-social-card.png
 ---
 
 Welcome to the Mojo Manual, a complete guide to the Mojo🔥 programming language!
@@ -16,61 +10,70 @@ Mojo is designed to solve a variety of AI development challenges that no other
 language can, because Mojo is the first programming language built from the
 ground-up with [MLIR](https://mlir.llvm.org/) (a compiler infrastructure that's
 ideal for heterogeneous hardware, from CPUs and GPUs, to various AI ASICs). We
-also designed Mojo as a superset of Python because we love Python and its
+also designed Mojo as the best way to extend Python because we love Python and its
 community, but we couldn't realistically enhance Python to do all the things we
 wanted. For a longer discussion on this topic, read [Why
-Mojo](/mojo/why-mojo.html).
+Mojo](/mojo/why-mojo).
 
 Beware that Mojo is still a very young language, so there's a lot that hasn't
 been built yet. Likewise, there's a lot of documentation that hasn't been
 written yet. But we're excited to share Mojo with you and [get your
-feedback](/mojo/community.html).
+feedback](https://www.modular.com/community).
 
 ## Contents
 
 - **Get started**
 
-  - [Get started with Mojo](get-started/index.html)
-  - [Hello World!](get-started/hello-world.html)
+  - [Why Mojo](/mojo/why-mojo)
+  - [Get started with Mojo](/mojo/manual/get-started)
 
-- **Basics**
+- **Language basics**
 
-  - [Language basics](basics.html)
-  - [Functions](functions.html)
-  - [Variables](variables.html)
-  - [Structs](structs.html)
-  - [Traits](traits.html)
+  - [Overview](/mojo/manual/basics)
+  - [Functions](/mojo/manual/functions)
+  - [Variables](/mojo/manual/variables)
+  - [Types](/mojo/manual/types)
+  - [Operators and expressions](/mojo/manual/operators)
+  - [Control flow](/mojo/manual/control-flow)
+  - [Errors and context managers](/mojo/manual/errors)
+  - [Structs](/mojo/manual/structs)
+  - [Modules and packages](/mojo/manual/packages)
 
 - **Value ownership**
 
-  - [Intro to value ownership](values/index.html)
-  - [Value semantics](values/value-semantics.html)
-  - [Ownership and borrowing](values/ownership.html)
+  - [Intro to value ownership](/mojo/manual/values/)
+  - [Value semantics](/mojo/manual/values/value-semantics)
+  - [Ownership](/mojo/manual/values/ownership)
+  - [Lifetimes, origins, and references](/mojo/manual/values/lifetimes)
 
 - **Value lifecycle**
 
-  - [Intro to value lifecycle](lifecycle/index.html)
-  - [Life of a value](lifecycle/life.html)
-  - [Death of a value](lifecycle/death.html)
+  - [Intro to value lifecycle](/mojo/manual/lifecycle/)
+  - [Life of a value](/mojo/manual/lifecycle/life)
+  - [Death of a value](/mojo/manual/lifecycle/death)
 
-- **Metaprogramming**
+- **Traits and parameters**
 
-  - [Parameterization: compile-time metaprogramming](parameters/index.html)
+  - [Traits](/mojo/manual/traits)
+  - [Parameterization: compile-time metaprogramming](/mojo/manual/parameters/)
+
+- **Pointers**
+
+  - [Intro to pointers](/mojo/manual/pointers/)
+  - [Unsafe pointers](/mojo/manual/pointers/unsafe-pointers)
 
 - **Python**
 
-  - [Python integration](python/index.html)
-  - [Python types](python/types.html)
+  - [Python integration](/mojo/manual/python/)
+  - [Python types](/mojo/manual/python/types)
 
-- **Decorators**
+- **Tools**
 
-  - [Mojo decorators](decorators/index.html)
-  - [@always_inline](decorators/always-inline.html)
-  - [@nonmaterializable](decorators/nonmaterializable.html)
-  - [@parameter](decorators/parameter.html)
-  - [@register_passable](decorators/register-passable.html)
-  - [@staticmethod](decorators/staticmethod.html)
-  - [@unroll](decorators/unroll.html)
-  - [@value](decorators/value.html)
+  - [Debugging](/mojo/tools/debugging)
+  - [Testing](/mojo/tools/testing)
 
-- [Modules and packages](packages.html)
+- **Project information**
+
+  - [Roadmap and sharp edges](/mojo/roadmap)
+  - [Changelog](/mojo/changelog)
+  - [FAQ](/mojo/faq)

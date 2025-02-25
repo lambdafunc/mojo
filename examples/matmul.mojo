@@ -10,87 +10,97 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
+# RUN: %mojo %s | FileCheck %s
 
 # This sample demonstrates how various systems optimizations can be applied to a
 # naive matmul implementation in Mojo to gain significant performance speedups
 
-import benchmark
+from os.env import getenv
 from random import rand
-from python import Python
-from memory import memset_zero
-from algorithm import (
-    vectorize,
-    vectorize_unroll,
-    parallelize,
-    Static2DTileUnitFunc as Tile2DFunc,
-)
+from sys import info, simdwidthof
+
+import benchmark
+from algorithm import Static2DTileUnitFunc as Tile2DFunc
+from algorithm import parallelize, vectorize
+from memory import UnsafePointer, memset_zero, stack_allocation
+from python import Python, PythonObject
 
 alias M = 512  # rows of A and C
 alias N = 4096  # cols of B and C
 alias K = 512  # cols of A and rows of B
 alias type = DType.float32
 
-# simdwidth of = amount of `type` elements that fit into a single SIMD register
-# 2x multiplier will use multiple SIMD registers in parallel where possible
-alias nelts = simdwidthof[type]() * 2
+# Get optimal number of elements to run with vectorize at compile time.
+# 2x or 4x helps with pipelining and running multiple SIMD operations in parallel.
+alias nelts = get_simd_width()
+
+
+fn get_simd_width() -> Int:
+    @parameter
+    if info.is_apple_silicon():
+        return 4 * simdwidthof[type]()
+    else:
+        return 2 * simdwidthof[type]()
+
+
 alias tile_n = 64  # N must be a multiple of this
 alias tile_k = 4  # K must be a multiple of this
 
 
 struct Matrix[rows: Int, cols: Int]:
-    var data: DTypePointer[type]
+    var data: UnsafePointer[Scalar[type]]
 
-    # Initialize zeroeing all values
-    fn __init__(inout self):
-        self.data = DTypePointer[type].alloc(rows * cols)
+    # Initialize zeroing all values
+    fn __init__(out self):
+        self.data = UnsafePointer[Scalar[type]].alloc(rows * cols)
         memset_zero(self.data, rows * cols)
 
     # Initialize taking a pointer, don't set any elements
-    fn __init__(inout self, data: DTypePointer[type]):
+    @implicit
+    fn __init__(out self, data: UnsafePointer[Scalar[type]]):
         self.data = data
 
     ## Initialize with random values
     @staticmethod
     fn rand() -> Self:
-        let data = DTypePointer[type].alloc(rows * cols)
+        var data = UnsafePointer[Scalar[type]].alloc(rows * cols)
         rand(data, rows * cols)
         return Self(data)
 
-    fn __getitem__(self, y: Int, x: Int) -> SIMD[type, 1]:
-        return self.load[1](y, x)
+    fn __getitem__(self, y: Int, x: Int) -> Scalar[type]:
+        return self.load(y, x)
 
-    fn __setitem__(inout self, y: Int, x: Int, val: SIMD[type, 1]):
-        self.store[1](y, x, val)
+    fn __setitem__(mut self, y: Int, x: Int, val: Scalar[type]):
+        self.store(y, x, val)
 
-    fn load[nelts: Int](self, y: Int, x: Int) -> SIMD[type, nelts]:
-        return self.data.simd_load[nelts](y * self.cols + x)
+    fn load[nelts: Int = 1](self, y: Int, x: Int) -> SIMD[type, nelts]:
+        return self.data.load[width=nelts](y * self.cols + x)
 
-    fn store[nelts: Int](self, y: Int, x: Int, val: SIMD[type, nelts]):
-        return self.data.simd_store[nelts](y * self.cols + x, val)
+    fn store[nelts: Int = 1](self, y: Int, x: Int, val: SIMD[type, nelts]):
+        self.data.store(y * self.cols + x, val)
 
 
 def run_matmul_python() -> Float64:
-    Python.add_to_path(".")
-    let pymatmul: PythonObject = Python.import_module("pymatmul")
-    let py = Python.import_module("builtins")
+    var pymatmul: PythonObject = Python.import_module("pymatmul")
+    var py = Python.import_module("builtins")
 
-    let gflops = pymatmul.benchmark_matmul_python(128, 128, 128).to_float64()
-    py.print(py.str("{:<13}{:>8.3f} GFLOPS").format("Python:", gflops))
+    var gflops = Float64(pymatmul.benchmark_matmul_python(128, 128, 128))
+    py.print(py.str("{:<18}{:>8.3f} GFLOPS").format("Python:", gflops))
 
     return gflops
 
 
 def run_matmul_numpy() -> Float64:
-    let pymatmul: PythonObject = Python.import_module("pymatmul")
-    let py = Python.import_module("builtins")
+    var pymatmul: PythonObject = Python.import_module("pymatmul")
+    var py = Python.import_module("builtins")
 
-    let gflops = pymatmul.benchmark_matmul_numpy(M, N, K).to_float64()
-    py.print(py.str("{:<13}{:>8.3f} GFLOPS").format("Numpy:", gflops))
+    var gflops = Float64(pymatmul.benchmark_matmul_numpy(M, N, K))
+    py.print(py.str("{:<18}{:>8.3f} GFLOPS").format("Numpy:", gflops))
 
     return gflops
 
 
-fn matmul_naive(inout C: Matrix, A: Matrix, B: Matrix):
+fn matmul_naive(mut C: Matrix, A: Matrix, B: Matrix):
     for m in range(C.rows):
         for k in range(A.cols):
             for n in range(C.cols):
@@ -98,7 +108,7 @@ fn matmul_naive(inout C: Matrix, A: Matrix, B: Matrix):
 
 
 # Using stdlib vectorize function
-fn matmul_vectorized(inout C: Matrix, A: Matrix, B: Matrix):
+fn matmul_vectorized(mut C: Matrix, A: Matrix, B: Matrix):
     for m in range(C.rows):
         for k in range(A.cols):
 
@@ -108,11 +118,14 @@ fn matmul_vectorized(inout C: Matrix, A: Matrix, B: Matrix):
                     m, n, C.load[nelts](m, n) + A[m, k] * B.load[nelts](k, n)
                 )
 
-            vectorize[nelts, C.cols, dot]()
+            vectorize[dot, nelts, size = C.cols]()
 
 
 # Parallelize the code by using the builtin parallelize function
-fn matmul_parallelized(inout C: Matrix, A: Matrix, B: Matrix):
+# num_workers is the number of worker threads to use in parallalize
+fn matmul_parallelized(mut C: Matrix, A: Matrix, B: Matrix):
+    var num_workers = C.rows
+
     @parameter
     fn calc_row(m: Int):
         for k in range(A.cols):
@@ -123,9 +136,9 @@ fn matmul_parallelized(inout C: Matrix, A: Matrix, B: Matrix):
                     m, n, C.load[nelts](m, n) + A[m, k] * B.load[nelts](k, n)
                 )
 
-            vectorize[nelts, C.cols, dot]()
+            vectorize[dot, nelts, size = C.cols]()
 
-    parallelize[calc_row](C.rows, C.rows)
+    parallelize[calc_row](C.rows, num_workers)
 
 
 # Perform 2D tiling on the iteration space defined by end_x and end_y
@@ -136,7 +149,10 @@ fn tile[tiled_fn: Tile2DFunc, tile_x: Int, tile_y: Int](end_x: Int, end_y: Int):
 
 
 # Use the above tile function to perform tiled matmul
-fn matmul_tiled(inout C: Matrix, A: Matrix, B: Matrix):
+# Also parallelize with num_workers threads
+fn matmul_tiled(mut C: Matrix, A: Matrix, B: Matrix):
+    var num_workers = C.rows
+
     @parameter
     fn calc_row(m: Int):
         @parameter
@@ -152,21 +168,33 @@ fn matmul_tiled(inout C: Matrix, A: Matrix, B: Matrix):
                         + A[m, k] * B.load[nelts](k, n + x),
                     )
 
-                vectorize[nelts, tile_x, dot]()
+                vectorize[dot, nelts, size=tile_x]()
 
         tile[calc_tile, tile_n, tile_k](C.cols, B.rows)
 
-    parallelize[calc_row](C.rows, C.rows)
+    parallelize[calc_row](C.rows, num_workers)
 
 
 # Unroll the vectorized loop by a constant factor
-fn matmul_unrolled(inout C: Matrix, A: Matrix, B: Matrix):
+# Also parallelize with num_workers threads
+fn matmul_unrolled[mode: Int](mut C: Matrix, A: Matrix, B: Matrix):
+    var num_workers: Int
+    if mode == 1:
+        num_workers = info.num_physical_cores()
+    elif mode == 2:
+        num_workers = info.num_logical_cores()
+    elif mode == 3:
+        num_workers = info.num_performance_cores()
+    else:
+        num_workers = C.rows
+
     @parameter
     fn calc_row(m: Int):
         @parameter
         fn calc_tile[tile_x: Int, tile_y: Int](x: Int, y: Int):
-            @unroll(tile_y)
-            for k in range(y, y + tile_y):
+            @parameter
+            for _k in range(tile_y):
+                var k = _k + y
 
                 @parameter
                 fn dot[nelts: Int](n: Int):
@@ -177,18 +205,85 @@ fn matmul_unrolled(inout C: Matrix, A: Matrix, B: Matrix):
                         + A[m, k] * B.load[nelts](k, n + x),
                     )
 
-                alias unroll_factor = tile_x // nelts
-                vectorize_unroll[nelts, tile_x, unroll_factor, dot]()
+                vectorize[
+                    dot, nelts, size=tile_x, unroll_factor = tile_x // nelts
+                ]()
 
         tile[calc_tile, tile_n, tile_k](C.cols, B.rows)
 
-    parallelize[calc_row](C.rows, C.rows)
+    parallelize[calc_row](C.rows, num_workers)
+
+
+# Perform 2D tiling on the iteration space defined by end_m and end_n, parallelizing over m.
+fn tile_parallel[
+    tiled_fn: Tile2DFunc, tile_m: Int, tile_n: Int
+](end_m: Int, end_n: Int,):
+    # Note: this assumes that ends are multiples of the tiles.
+    @parameter
+    fn row(mo: Int):
+        var m = tile_m * mo
+        for n in range(0, end_n, tile_n):
+            tiled_fn[tile_m, tile_n](m, n)
+
+    parallelize[row](end_m // tile_m, M)
+
+
+# Use per-tile accumulator to avoid repeated reads and writes to
+# a global memory location, which can thrash the cache.
+# Also partially unroll the loop over the reduction dimension (K)
+# and reorder the reduction inner loop with the row iteration inner loop
+fn matmul_reordered(mut C: Matrix, A: Matrix, B: Matrix):
+    alias tile_m = 32
+    alias tile_n = 32
+    alias tile_k = max(4, K // 256)
+
+    constrained[M % tile_m == 0, "M must be a multiple of tile_m"]()
+    constrained[N % tile_n == 0, "N must be a multiple of tile_n"]()
+    constrained[K % tile_k == 0, "K must be a multiple of tile_k"]()
+
+    @parameter
+    fn calc_tile[tile_m: Int, tile_n: Int](mo: Int, no: Int):
+        # Allocate the tile of accumulators on the stack.
+        var accumulator = Matrix[tile_m, tile_n](
+            stack_allocation[tile_m * tile_n, type]()
+        )
+        memset_zero(accumulator.data, tile_m * tile_n)
+
+        for ko in range(0, A.cols, tile_k):
+
+            @parameter
+            fn calc_tile_row[](m: Int):
+                @parameter
+                for k in range(tile_k):
+
+                    @parameter
+                    fn dot[nelts: Int](n: Int):
+                        accumulator.store[nelts](
+                            m,
+                            n,
+                            accumulator.load[nelts](m, n)
+                            + A[mo + m, ko + k] * B.load[nelts](ko + k, no + n),
+                        )
+
+                    vectorize[
+                        dot, nelts, size=tile_n, unroll_factor = tile_n // nelts
+                    ]()
+
+            for m in range(tile_m):
+                calc_tile_row(m)
+
+        # Copy the local tile to the output
+        for m in range(tile_m):
+            for n in range(tile_n):
+                C[mo + m, no + n] = accumulator[m, n]
+
+    tile_parallel[calc_tile, tile_m, tile_n](C.rows, C.cols)
 
 
 @always_inline
 fn bench[
-    func: fn (inout Matrix, Matrix, Matrix) -> None, name: StringLiteral
-](base_gflops: Float64, numpy_gflops: Float64) raises:
+    func: fn (mut Matrix, Matrix, Matrix) -> None, name: StringLiteral
+](base_gflops: Float64, np_gflops: Float64) raises:
     var A = Matrix[M, K].rand()
     var B = Matrix[K, N].rand()
     var C = Matrix[M, N]()
@@ -198,19 +293,19 @@ fn bench[
     fn test_fn():
         _ = func(C, A, B)
 
-    let secs = benchmark.run[test_fn](max_runtime_secs=0.5).mean()
+    var secs = benchmark.run[test_fn](max_runtime_secs=0.5).mean()
 
     A.data.free()
     B.data.free()
     C.data.free()
 
-    let gflops = ((2 * M * N * K) / secs) / 1e9
-    let speedup: Float64 = gflops / base_gflops
-    let numpy_speedup: Float64 = gflops / numpy_gflops
+    var gflops = ((2 * M * N * K) / secs) / 1e9
+    var speedup: Float64 = gflops / base_gflops
+    var numpy_speedup: Float64 = gflops / np_gflops
 
-    let py = Python.import_module("builtins")
+    var py = Python.import_module("builtins")
     _ = py.print(
-        py.str("{:<13}{:>8.3f} GFLOPS {:>9.2f}x Python {:>5.2f}x Numpy").format(
+        py.str("{:<18}{:>8.3f} GFLOPS {:>9.2f}x Python   {:.2f}x Numpy").format(
             name, gflops, speedup, numpy_speedup
         )
     )
@@ -218,8 +313,8 @@ fn bench[
 
 @always_inline
 fn test_matrix_equal[
-    func: fn (inout Matrix, Matrix, Matrix) -> None
-](inout C: Matrix, A: Matrix, B: Matrix) raises -> Bool:
+    func: fn (mut Matrix, Matrix, Matrix) -> None
+](C: Matrix, A: Matrix, B: Matrix) raises -> Bool:
     """Runs a matmul function on A and B and tests the result for equality with
     C on every element.
     """
@@ -232,9 +327,9 @@ fn test_matrix_equal[
     return True
 
 
-fn test_all() raises:
-    let A = Matrix[M, K].rand()
-    let B = Matrix[K, N].rand()
+def test_all():
+    var A = Matrix[M, K].rand()
+    var B = Matrix[K, N].rand()
     var C = Matrix[M, N]()
 
     matmul_naive(C, A, B)
@@ -245,25 +340,42 @@ fn test_all() raises:
         raise Error("Parallelize output does not match naive implementation")
     if not test_matrix_equal[matmul_tiled](C, A, B):
         raise Error("Tiled output does not match naive implementation")
-    if not test_matrix_equal[matmul_unrolled](C, A, B):
+    if not test_matrix_equal[matmul_unrolled[0]](C, A, B):
         raise Error("Unroll output does not match naive implementation")
+    if not test_matrix_equal[matmul_unrolled[1]](C, A, B):
+        raise Error("Unroll/physical cores does not match naive implementation")
+    if not test_matrix_equal[matmul_unrolled[2]](C, A, B):
+        raise Error("Unroll/logical cores does not match naive implementation")
+    if not test_matrix_equal[matmul_unrolled[3]](C, A, B):
+        raise Error("Unroll/perf cores does not match naive implementation")
+    if not test_matrix_equal[matmul_reordered](C, A, B):
+        raise Error("Loop reorder output does not match naive implementation")
 
     A.data.free()
     B.data.free()
     C.data.free()
 
 
-fn main() raises:
+def main():
     constrained[N % tile_n == 0, "N must be a multiple of tile_n"]()
     constrained[K % tile_k == 0, "K must be a multiple of tile_k"]()
 
+    print("Problem Size (M N K):", M, N, K)
+
     test_all()
     print("CPU Results\n")
-    let python_gflops = run_matmul_python()
-    let numpy_gflops = run_matmul_numpy()
+    var py_gflops = run_matmul_python()
+    var np_gflops = run_matmul_numpy()
 
-    bench[matmul_naive, "Naive:"](python_gflops, numpy_gflops)
-    bench[matmul_vectorized, "Vectorized: "](python_gflops, numpy_gflops)
-    bench[matmul_parallelized, "Parallelized:"](python_gflops, numpy_gflops)
-    bench[matmul_tiled, "Tiled:"](python_gflops, numpy_gflops)
-    bench[matmul_unrolled, "Unrolled:"](python_gflops, numpy_gflops)
+    # Don't run all these benchmarks in CI, too resource intensive
+    if not getenv("CI"):
+        bench[matmul_naive, "Naive:"](py_gflops, np_gflops)
+        bench[matmul_vectorized, "Vectorized:"](py_gflops, np_gflops)
+        bench[matmul_parallelized, "Parallelized:"](py_gflops, np_gflops)
+        bench[matmul_tiled, "Tiled:"](py_gflops, np_gflops)
+        bench[matmul_unrolled[0], "Unrolled:"](py_gflops, np_gflops)
+        bench[matmul_unrolled[1], "Physical Cores:"](py_gflops, np_gflops)
+        bench[matmul_unrolled[2], "Logical Cores:"](py_gflops, np_gflops)
+        bench[matmul_unrolled[3], "Performance Cores:"](py_gflops, np_gflops)
+    # CHECK: Reordered
+    bench[matmul_reordered, "Reordered:"](py_gflops, np_gflops)

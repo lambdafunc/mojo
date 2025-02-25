@@ -10,17 +10,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-# RUN: %mojo -debug-level full %s | FileCheck %s
+# RUN: %mojo %s | FileCheck %s
 
 # This sample implements a simple reduction operation on a
 # large array of values to produce a single result.
 # Reductions and scans are common algorithm patterns in parallel computing.
 
-from benchmark import benchmark, Unit, keep
-from time import now
-from algorithm import sum
 from random import rand
-from memory.buffer import Buffer
+
+from algorithm import sum
+from benchmark import Unit, benchmark, keep
+from buffer import NDBuffer
+from memory import UnsafePointer
 from python import Python
 
 # Change these numbers to reduce on different sizes
@@ -29,47 +30,51 @@ alias size_large: Int = 1 << 27
 
 # Datatype for Tensor/Array
 alias type = DType.float32
+alias scalar = Scalar[type]
 
 
 # Use the https://en.wikipedia.org/wiki/Kahan_summation_algorithm
 # Simple summation of the array elements
-fn naive_reduce_sum[size: Int](array: Tensor[type]) -> Float32:
-    let A = array
-    var my_sum = array[0]
-    var c: Float32 = 0.0
-    for i in range(array.dim(0)):
-        let y = array[i] - c
-        let t = my_sum + y
+fn naive_reduce_sum[
+    size: Int
+](buffer: NDBuffer[type, 1, size]) raises -> scalar:
+    var my_sum: scalar = 0
+    var c: scalar = 0
+    for i in range(buffer.size()):
+        var y = buffer[i] - c
+        var t = my_sum + y
         c = (t - my_sum) - y
         my_sum = t
     return my_sum
 
 
-fn stdlib_reduce_sum[size: Int](array: Tensor[type]) -> Float32:
-    let my_sum = sum(array._to_buffer())
+fn stdlib_reduce_sum[
+    size: Int
+](array: NDBuffer[type, 1, size]) raises -> scalar:
+    var my_sum = sum(array)
     return my_sum
 
 
-fn pretty_print(name: StringLiteral, elements: Int, time: Float64) raises:
-    let py = Python.import_module("builtins")
-    _ = py.print(
+def pretty_print(name: String, elements: Int, time: Float64):
+    py = Python.import_module("builtins")
+    py.print(
         py.str("{:<16} {:>11,} {:>8.2f}ms").format(
-            String(name) + " elements:", elements, time
+            name + " elements:", elements, time
         )
     )
 
 
 fn bench[
-    func: fn[size: Int] (array: Tensor[type]) -> Float32,
+    func: fn[size: Int] (buffer: NDBuffer[type, 1, size]) raises -> scalar,
     size: Int,
-    name: StringLiteral,
-](array: Tensor[type]) raises:
+    name: String,
+](buffer: NDBuffer[type, 1, size]) raises:
     @parameter
-    fn runner():
-        let result = func[size](array)
+    fn runner() raises:
+        var result = func[size](buffer)
         keep(result)
 
-    let ms = benchmark.run[runner](max_runtime_secs=0.5).mean(Unit.ms)
+    var ms = benchmark.run[runner](max_runtime_secs=0.5).mean(Unit.ms)
     pretty_print(name, size, ms)
 
 
@@ -78,13 +83,21 @@ fn main() raises:
         "Sum all values in a small array and large array\n"
         "Shows algorithm.sum from stdlib with much better performance\n"
     )
-    # Create two 1-dimensional tensors i.e. arrays
-    let small_array = rand[type](size_small)
-    let large_array = rand[type](size_large)
+    # Allocate and randomize data, then create two buffers
+    var ptr_small = UnsafePointer[Scalar[type]].alloc(size_small)
+    var ptr_large = UnsafePointer[Scalar[type]].alloc(size_large)
 
-    bench[naive_reduce_sum, size_small, "naive"](small_array)
-    bench[naive_reduce_sum, size_large, "naive"](large_array)
+    rand(ptr_small, size_small)
+    rand(ptr_large, size_large)
 
-    bench[stdlib_reduce_sum, size_small, "stdlib"](small_array)
+    var buffer_small = NDBuffer[type, 1, size_small](ptr_small)
+    var buffer_large = NDBuffer[type, 1, size_large](ptr_large)
+
+    bench[naive_reduce_sum, size_small, "naive"](buffer_small)
+    bench[naive_reduce_sum, size_large, "naive"](buffer_large)
+    bench[stdlib_reduce_sum, size_small, "stdlib"](buffer_small)
     # CHECK: stdlib elements
-    bench[stdlib_reduce_sum, size_large, "stdlib"](large_array)
+    bench[stdlib_reduce_sum, size_large, "stdlib"](buffer_large)
+
+    ptr_small.free()
+    ptr_large.free()

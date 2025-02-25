@@ -11,23 +11,23 @@
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
 
-# RUN: %mojo -debug-level full %s | FileCheck %s
-import benchmark
-from complex import ComplexSIMD, ComplexFloat64
+# RUN: %mojo %s | FileCheck %s
+
 from math import iota
-from python import Python
-from runtime.llcl import Runtime
-from sys.info import num_logical_cores
+from sys import num_physical_cores, simdwidthof
+
+import benchmark
 from algorithm import parallelize, vectorize
-from tensor import Tensor
-from utils.index import Index
-from python import Python
+from complex import ComplexFloat64, ComplexSIMD
+from memory import UnsafePointer
 
-alias float_type = DType.float64
+alias float_type = DType.float32
+alias int_type = DType.int32
 alias simd_width = 2 * simdwidthof[float_type]()
+alias unit = benchmark.Unit.ms
 
-alias width = 960
-alias height = 960
+alias cols = 960
+alias rows = 960
 alias MAX_ITERS = 200
 
 alias min_x = -2.0
@@ -36,20 +36,30 @@ alias min_y = -1.5
 alias max_y = 1.5
 
 
+struct Matrix[type: DType, rows: Int, cols: Int]:
+    var data: UnsafePointer[Scalar[type]]
+
+    fn __init__(out self):
+        self.data = UnsafePointer[Scalar[type]].alloc(rows * cols)
+
+    fn store[nelts: Int](self, row: Int, col: Int, val: SIMD[type, nelts]):
+        self.data.store(row * cols + col, val)
+
+
 fn mandelbrot_kernel_SIMD[
     simd_width: Int
-](c: ComplexSIMD[float_type, simd_width]) -> SIMD[float_type, simd_width]:
+](c: ComplexSIMD[float_type, simd_width]) -> SIMD[int_type, simd_width]:
     """A vectorized implementation of the inner mandelbrot computation."""
-    let cx = c.re
-    let cy = c.im
+    var cx = c.re
+    var cy = c.im
     var x = SIMD[float_type, simd_width](0)
     var y = SIMD[float_type, simd_width](0)
     var y2 = SIMD[float_type, simd_width](0)
-    var iters = SIMD[float_type, simd_width](0)
-
+    var iters = SIMD[int_type, simd_width](0)
     var t: SIMD[DType.bool, simd_width] = True
-    for i in range(MAX_ITERS):
-        if not t.reduce_or():
+
+    for _ in range(MAX_ITERS):
+        if not any(t):
             break
         y2 = y * y
         y = x.fma(y + y, cy)
@@ -60,49 +70,41 @@ fn mandelbrot_kernel_SIMD[
 
 
 fn main() raises:
-    let t = Tensor[float_type](height, width)
+    var matrix = Matrix[int_type, rows, cols]()
 
     @parameter
     fn worker(row: Int):
-        let scale_x = (max_x - min_x) / width
-        let scale_y = (max_y - min_y) / height
+        alias scale_x = (max_x - min_x) / cols
+        alias scale_y = (max_y - min_y) / rows
 
         @parameter
         fn compute_vector[simd_width: Int](col: Int):
             """Each time we operate on a `simd_width` vector of pixels."""
-            let cx = min_x + (col + iota[float_type, simd_width]()) * scale_x
-            let cy = min_y + row * scale_y
-            let c = ComplexSIMD[float_type, simd_width](cx, cy)
-            t.data().simd_store[simd_width](
-                row * width + col, mandelbrot_kernel_SIMD[simd_width](c)
-            )
+            var cx = min_x + (col + iota[float_type, simd_width]()) * scale_x
+            var cy = min_y + row * SIMD[float_type, simd_width](scale_y)
+            var c = ComplexSIMD[float_type, simd_width](cx, cy)
+            matrix.store(row, col, mandelbrot_kernel_SIMD(c))
 
-        # Vectorize the call to compute_vector where call gets a chunk of pixels.
-        vectorize[simd_width, compute_vector](width)
+        # Vectorize the call to compute_vector with a chunk of pixels.
+        vectorize[compute_vector, simd_width, size=cols]()
 
     @parameter
-    fn bench[simd_width: Int]():
-        for row in range(height):
+    fn bench():
+        for row in range(rows):
             worker(row)
 
-    let vectorized = benchmark.run[bench[simd_width]](
-        max_runtime_secs=0.5
-    ).mean()
-    print("Number of threads:", num_logical_cores())
-    print("Vectorized:", vectorized, "s")
+    @parameter
+    fn bench_parallel():
+        parallelize[worker](rows, rows)
 
-    with Runtime(num_logical_cores()) as rt:
-        # Parallelized
-        @parameter
-        fn bench_parallel[simd_width: Int]():
-            parallelize[worker](rt, height, height)
-            # parallelize[worker](height, height)
+    print("Number of physical cores:", num_physical_cores())
 
-        let parallelized = benchmark.run[bench_parallel[simd_width]](
-            max_runtime_secs=0.5
-        ).mean()
-        print("Parallelized:", parallelized, "s")
-        # CHECK: Parallel speedup
-        print("Parallel speedup:", vectorized / parallelized)
+    var vectorized = benchmark.run[bench]().mean(unit)
+    print("Vectorized:", vectorized, unit)
+    var parallelized = benchmark.run[bench_parallel]().mean(unit)
+    print("Parallelized:", parallelized, unit)
 
-    _ = t  # Make sure tensor isn't destroyed before benchmark is finished
+    # CHECK: Parallel speedup
+    print("Parallel speedup:", vectorized / parallelized)
+
+    matrix.data.free()

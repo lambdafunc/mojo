@@ -10,47 +10,120 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-# RUN: %mojo -debug-level full %s | FileCheck %s
+# UNSUPPORTED: system-linux
+# COM: currently flaky on Linux only, see SDLC-1080
+# RUN: %mojo %s
 
 # This sample implements the nbody benchmarking in
 # https://benchmarksgame-team.pages.debian.net/benchmarksgame/performance/nbody.html
 
-from utils.index import StaticTuple
+from collections import List
 from math import sqrt
-from benchmark import run
+
+from benchmark import keep, run
+from testing import assert_almost_equal
 
 alias PI = 3.141592653589793
 alias SOLAR_MASS = 4 * PI * PI
 alias DAYS_PER_YEAR = 365.24
 
 
-@register_passable("trivial")
+@value
 struct Planet:
     var pos: SIMD[DType.float64, 4]
     var velocity: SIMD[DType.float64, 4]
     var mass: Float64
 
     fn __init__(
+        mut self,
         pos: SIMD[DType.float64, 4],
         velocity: SIMD[DType.float64, 4],
         mass: Float64,
-    ) -> Self:
-        return Self {
-            pos: pos,
-            velocity: velocity,
-            mass: mass,
-        }
+    ):
+        self.pos = pos
+        self.velocity = velocity
+        self.mass = mass
 
 
-alias NUM_BODIES = 5
+alias Sun = Planet(
+    0,
+    0,
+    SOLAR_MASS,
+)
+
+alias Jupiter = Planet(
+    SIMD[DType.float64, 4](
+        4.84143144246472090e00,
+        -1.16032004402742839e00,
+        -1.03622044471123109e-01,
+        0,
+    ),
+    SIMD[DType.float64, 4](
+        1.66007664274403694e-03 * DAYS_PER_YEAR,
+        7.69901118419740425e-03 * DAYS_PER_YEAR,
+        -6.90460016972063023e-05 * DAYS_PER_YEAR,
+        0,
+    ),
+    9.54791938424326609e-04 * SOLAR_MASS,
+)
+
+alias Saturn = Planet(
+    SIMD[DType.float64, 4](
+        8.34336671824457987e00,
+        4.12479856412430479e00,
+        -4.03523417114321381e-01,
+        0,
+    ),
+    SIMD[DType.float64, 4](
+        -2.76742510726862411e-03 * DAYS_PER_YEAR,
+        4.99852801234917238e-03 * DAYS_PER_YEAR,
+        2.30417297573763929e-05 * DAYS_PER_YEAR,
+        0,
+    ),
+    2.85885980666130812e-04 * SOLAR_MASS,
+)
+
+alias Uranus = Planet(
+    SIMD[DType.float64, 4](
+        1.28943695621391310e01,
+        -1.51111514016986312e01,
+        -2.23307578892655734e-01,
+        0,
+    ),
+    SIMD[DType.float64, 4](
+        2.96460137564761618e-03 * DAYS_PER_YEAR,
+        2.37847173959480950e-03 * DAYS_PER_YEAR,
+        -2.96589568540237556e-05 * DAYS_PER_YEAR,
+        0,
+    ),
+    4.36624404335156298e-05 * SOLAR_MASS,
+)
+
+alias Neptune = Planet(
+    SIMD[DType.float64, 4](
+        1.53796971148509165e01,
+        -2.59193146099879641e01,
+        1.79258772950371181e-01,
+        0,
+    ),
+    SIMD[DType.float64, 4](
+        2.68067772490389322e-03 * DAYS_PER_YEAR,
+        1.62824170038242295e-03 * DAYS_PER_YEAR,
+        -9.51592254519715870e-05 * DAYS_PER_YEAR,
+        0,
+    ),
+    5.15138902046611451e-05 * SOLAR_MASS,
+)
+
+alias INITIAL_SYSTEM = List[Planet](Sun, Jupiter, Saturn, Uranus, Neptune)
 
 
-fn offset_momentum(inout bodies: StaticTuple[NUM_BODIES, Planet]):
+@always_inline
+fn offset_momentum(mut bodies: List[Planet]):
     var p = SIMD[DType.float64, 4]()
 
-    @unroll
-    for i in range(NUM_BODIES):
-        p += bodies[i].velocity * bodies[i].mass
+    for body in bodies:
+        p += body[].velocity * body[].mass
 
     var body = bodies[0]
     body.velocity = -p / SOLAR_MASS
@@ -58,126 +131,50 @@ fn offset_momentum(inout bodies: StaticTuple[NUM_BODIES, Planet]):
     bodies[0] = body
 
 
-fn advance(inout bodies: StaticTuple[NUM_BODIES, Planet], dt: Float64):
-    @unroll
-    for i in range(NUM_BODIES):
-        var body_i = bodies[i]
-
-        @unroll(NUM_BODIES - 1)
-        for j in range(NUM_BODIES - i - 1):
+@always_inline
+fn advance(mut bodies: List[Planet], dt: Float64):
+    for i in range(len(INITIAL_SYSTEM)):
+        for j in range(len(INITIAL_SYSTEM) - i - 1):
+            var body_i = bodies[i]
             var body_j = bodies[j + i + 1]
-            let diff = body_i.pos - body_j.pos
-            let diff_sqr = (diff * diff).reduce_add()
-            let mag = dt / (diff_sqr * sqrt(diff_sqr))
+            var diff = body_i.pos - body_j.pos
+            var diff_sqr = (diff * diff).reduce_add()
+            var mag = dt / (diff_sqr * sqrt(diff_sqr))
 
             body_i.velocity -= diff * body_j.mass * mag
             body_j.velocity += diff * body_i.mass * mag
 
+            bodies[i] = body_i
             bodies[j + i + 1] = body_j
 
-        bodies[i] = body_i
-
-    @unroll
-    for i in range(NUM_BODIES):
-        var body = bodies[i]
-        body.pos += dt * body.velocity
-        bodies[i] = body
+    for body in bodies:
+        body[].pos += dt * body[].velocity
 
 
-fn energy(bodies: StaticTuple[NUM_BODIES, Planet]) -> Float64:
+@always_inline
+fn energy(bodies: List[Planet]) -> Float64:
     var e: Float64 = 0
 
-    @unroll
-    for i in range(NUM_BODIES):
-        let body_i = bodies[i]
+    for i in range(len(INITIAL_SYSTEM)):
+        var body_i = bodies[i]
         e += (
             0.5
             * body_i.mass
             * ((body_i.velocity * body_i.velocity).reduce_add())
         )
-
-        for j in range(NUM_BODIES - i - 1):
-            let body_j = bodies[j + i + 1]
-            let diff = body_i.pos - body_j.pos
-            let distance = sqrt((diff * diff).reduce_add())
+        for j in range(len(INITIAL_SYSTEM) - i - 1):
+            var body_j = bodies[j + i + 1]
+            var diff = body_i.pos - body_j.pos
+            var distance = sqrt((diff * diff).reduce_add())
             e -= (body_i.mass * body_j.mass) / distance
 
     return e
 
 
-fn bench():
-    let Sun = Planet(
-        0,
-        0,
-        SOLAR_MASS,
-    )
+def run_system():
+    print("Starting nbody...")
 
-    let Jupiter = Planet(
-        SIMD[DType.float64, 4](
-            4.84143144246472090e00,
-            -1.16032004402742839e00,
-            -1.03622044471123109e-01,
-            0,
-        ),
-        SIMD[DType.float64, 4](
-            1.66007664274403694e-03 * DAYS_PER_YEAR,
-            7.69901118419740425e-03 * DAYS_PER_YEAR,
-            -6.90460016972063023e-05 * DAYS_PER_YEAR,
-            0,
-        ),
-        9.54791938424326609e-04 * SOLAR_MASS,
-    )
-
-    let Saturn = Planet(
-        SIMD[DType.float64, 4](
-            8.34336671824457987e00,
-            4.12479856412430479e00,
-            -4.03523417114321381e-01,
-            0,
-        ),
-        SIMD[DType.float64, 4](
-            -2.76742510726862411e-03 * DAYS_PER_YEAR,
-            4.99852801234917238e-03 * DAYS_PER_YEAR,
-            2.30417297573763929e-05 * DAYS_PER_YEAR,
-            0,
-        ),
-        2.85885980666130812e-04 * SOLAR_MASS,
-    )
-
-    let Uranus = Planet(
-        SIMD[DType.float64, 4](
-            1.28943695621391310e01,
-            -1.51111514016986312e01,
-            -2.23307578892655734e-01,
-            0,
-        ),
-        SIMD[DType.float64, 4](
-            2.96460137564761618e-03 * DAYS_PER_YEAR,
-            2.37847173959480950e-03 * DAYS_PER_YEAR,
-            -2.96589568540237556e-05 * DAYS_PER_YEAR,
-            0,
-        ),
-        4.36624404335156298e-05 * SOLAR_MASS,
-    )
-
-    let Neptune = Planet(
-        SIMD[DType.float64, 4](
-            1.53796971148509165e01,
-            -2.59193146099879641e01,
-            1.79258772950371181e-01,
-            0,
-        ),
-        SIMD[DType.float64, 4](
-            2.68067772490389322e-03 * DAYS_PER_YEAR,
-            1.62824170038242295e-03 * DAYS_PER_YEAR,
-            -9.51592254519715870e-05 * DAYS_PER_YEAR,
-            0,
-        ),
-        5.15138902046611451e-05 * SOLAR_MASS,
-    )
-    var system = StaticTuple[NUM_BODIES, Planet](
-        Sun, Jupiter, Saturn, Uranus, Neptune
-    )
+    var system = INITIAL_SYSTEM
     offset_momentum(system)
 
     print("Energy of System:", energy(system))
@@ -185,14 +182,24 @@ fn bench():
     for i in range(50_000_000):
         advance(system, 0.01)
 
-    # CHECK: Energy of System
-    print("Energy of System:", energy(system))
+    var system_energy = energy(system)
+    assert_almost_equal(system_energy, -0.1690599)
+    print("Energy of System:", system_energy)
 
 
-fn benchmark():
-    print(run[bench](max_runtime_secs=0.5).mean())
+def benchmark():
+    fn benchmark_fn():
+        var system = INITIAL_SYSTEM
+        offset_momentum(system)
+        keep(energy(system))
+
+        for i in range(50_000_000):
+            advance(system, 0.01)
+
+        keep(energy(system))
+
+    run[benchmark_fn](max_runtime_secs=0.5).print()
 
 
-fn main():
-    print("Starting nbody...")
-    bench()
+def main():
+    run_system()
