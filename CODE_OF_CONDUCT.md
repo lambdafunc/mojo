@@ -47,14 +47,14 @@ threatening, offensive, or harmful.
 ## Scope
 
 This Code of Conduct applies to all project content and public spaces on the
-Mojo GitHub repo, the rest of Modular’s GitHub organization, and all other
-official Mojo community spaces and communication mediums, whether offline or
+MAX GitHub repo, the rest of Modular’s GitHub organization, and all other
+official MAX community spaces and communication mediums, whether offline or
 online.
 
 ## Enforcement
 
 Instances of abusive, harassment, or otherwise unacceptable behavior should be
-reported to the project team at <mojo+conduct@modular.com>. All complaints will
+reported to the project team at <max+conduct@modular.com>. All complaints will
 be reviewed and investigated and will result in a response that is deemed
 necessary and appropriate to the circumstances. The project team is obligated
 to maintain confidentiality with regard to the reporter of an incident. Further

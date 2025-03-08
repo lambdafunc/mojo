@@ -1,96 +1,44 @@
-# Mojo code examples
+# MAX examples
 
-A collection of sample programs and Mojo notebooks written in the  
-[Mojo](https://docs.modular.com/mojo/programming-manual.html) programming language.
+These examples demonstrate the power and flexibility of
+[MAX](https://docs.modular.com/max/). They include:
 
-## Getting Started
+## [Mojo code examples](mojo/)
 
-Access a Mojo programming environment available from the  
-Mojo product [page](https://www.modular.com/mojo).
+A collection of sample programs written in the
+[Mojo](https://docs.modular.com/mojo/manual/) programming language.
 
-Git clone the repository of Mojo samples using the command below:
+## [Custom GPU and CPU operations in Mojo](custom_ops/)
 
-```bash
-git clone https://github.com/modularml/mojo.git
-```
+The [MAX Graph API](https://docs.modular.com/max/graph/) provides a powerful
+framework for staging computational graphs to be run on GPUs, CPUs, and more.
+Each operation in one of these graphs is defined in
+[Mojo](https://docs.modular.com/mojo/), an easy-to-use language for writing
+high-performance code.
 
-## Running
+The examples here illustrate how to construct custom graph operations in Mojo
+that run on GPUs and CPUs, as well as how to build computational graphs that
+contain and run them on different hardware architectures.
 
-Use the following sample command-line to run the programs:
+## [Compiling and running Mojo functions on a GPU](gpu_functions/)
 
-```bash
-mojo matmul.mojo
-```
+In addition to placing custom Mojo functions within a computational graph, the
+MAX Driver API can handle direct compilation of GPU functions written in Mojo
+and can dispatch them onto the GPU. This is a programming model that may be
+familiar to those who have worked with CUDA or similar GPGPU frameworks.
 
-You can run the Mojo notebooks using [JupyterLab or Visual Studio  
-Code](notebooks/README.md) with the Mojo extension available on the Marketplace.
+These examples show how to compile and run Mojo functions, from simple to
+complex, on an available GPU. Note that
+[a MAX-compatible GPU](https://docs.modular.com/max/faq/#gpu-requirements) will
+be necessary to build and run these.
 
-### Mojo SDK Container
+## [PyTorch and ONNX inference on MAX](inference/)
 
-The repo also contains a Dockerfile that can be used to create a  
-Mojo SDK container for developing and running Mojo programs. Use the  
-container in conjunction with the Visual Studio Code devcontainers  
-extension to develop directly inside the container.
+MAX has the power to accelerate existing PyTorch and ONNX models directly, and
+provides Python, Mojo, and C APIs for this. These examples showcase common
+models from these frameworks and how to run them even faster via MAX.
 
-The Dockerfile also sets up a `conda` environment and by default,  
-starts a `jupyter` server (which you can access via the browser).
+## [Jupyter notebooks](notebooks/)
 
-To build a Mojo container, either use
-[docker-compose](https://docs.docker.com/compose/) in `mojo/examples/docker`:
-
-```bash
-docker compose up -d
-```
-
-Or the convenience script provided:
-
-```bash
-./build-image.sh --auth-key <your-modular-auth-key> \
-   --mojo-version 0.3
-```
-
-The script also supports building with `podman` instead of `docker`:
-
-```bash
-./build-image.sh --auth-key <your-modular-auth-key> \
-   --use-podman \
-   --mojo-version 0.3
-   
-```
-
-You can then run with either `docker` or `podman`. In the example below,  
-we map the ports, bind mount the current directory and open a shell into  
-the container:
-
-```bash
-docker run \
-   -it --rm \
-   -p 8888:8888 \
-   --net host \
-   -v ${PWD}:${PWD} \
-   modular/mojo-v0.3-20232109-1205 bash
-```
-
-`podman` requires an additional argument to add the `SYS_PTRACE` capabilities:
-
-```bash
-podman run \
-   --cap-add SYS_PTRACE \
-   -it --rm \
-   -p 8888:8888 \
-   --net host \
-   -v ${PWD}:${PWD} \
-   modular/mojo-v0.3-20232109-1205 bash
-```
-
-## License
-
-The Mojo examples and notebooks in this repository are licensed  
-under the Apache License v2.0 with LLVM Exceptions  
-(see the LLVM [License](https://llvm.org/LICENSE.txt)).
-
-## Contributing
-
-Thanks for your interest in contributing to this repository!  
-We are not accepting pull requests at this time, but are actively  
-working on a process to accept contributions. Please stay tuned.
+Jupyter notebooks that showcase PyTorch and ONNX models being accelerated
+through MAX.
